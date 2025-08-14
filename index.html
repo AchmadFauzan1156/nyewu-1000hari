@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Penghitung 1000 Hari (Nyewu) – Masehi & Hijriah</title>
+  <meta name="description" content="Hitung 3, 7, 40, 100, 365 (1 tahun), 730 (2 tahun), dan 1000 hari (nyewu) dari tanggal wafat. Tampilkan Masehi & Hijriah, deskripsi peringatan, countdown, dan ekspor ICS." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header role="banner">
+  <div class="wrap">
+    <h1>Penghitung 1000 Hari (Nyewu)</h1>
+    <p class="sub">
+      Hitung 3, 7, 40, 100, 365 (1 tahun), <b>730 (2 tahun)</b>, dan <b>1000 hari</b> sejak tanggal wafat.
+      Bandingkan <b>Masehi</b> dan <b>Hijriah</b>, baca <b>deskripsi peringatan</b>, buat <b>.ics</b>, dan bagikan tautan.
+    </p>
+  </div>
+</header>
+
+<main class="wrap" role="main">
+  <section class="card">
+    <form id="form" novalidate>
+      <div class="grid grid-2">
+        <div>
+          <label for="name">Nama Almarhum</label>
+          <input id="name" name="name" placeholder="mis. Ahmad bin Yusuf" title="Nama almarhum/almarhumah" autocomplete="off" />
+        </div>
+        <div>
+          <label for="dod">Tanggal Wafat</label>
+          <input id="dod" name="dod" type="date" title="Tanggal wafat (YYYY-MM-DD)" required />
+        </div>
+      </div>
+
+      <div class="grid grid-2 mt-10">
+        <div>
+          <label for="mode">Metode Hitung</label>
+          <select id="mode" name="mode" title="Pilih metode hitung" aria-describedby="modeHelp">
+            <option value="inkl">Inklusif (hari wafat dihitung hari ke-1)</option>
+            <option value="eksl">Eksklusif (mulai esok hari)</option>
+          </select>
+          <div id="modeHelp" class="tiny">Inklusif: N−1 hari; Eksklusif: N hari.</div>
+        </div>
+        <div>
+          <label for="tz">Zona Waktu</label>
+          <select id="tz" name="tz" title="Pilih zona waktu untuk menampilkan tanggal">
+            <option value="Asia/Jakarta">Asia/Jakarta (WIB)</option>
+            <option value="Asia/Makassar">Asia/Makassar (WITA)</option>
+            <option value="Asia/Jayapura">Asia/Jayapura (WIT)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row mt-12">
+        <button id="calc" type="button" class="btn">Hitung</button>
+        <button id="print" type="button" class="btn ghost">Cetak</button>
+        <button id="reset" type="reset" class="btn ghost">Reset</button>
+      </div>
+
+      <div class="row mt-12 kpi-wrap">
+        <div class="kpi"><span class="pill">Mode</span> <b id="modeLabel">–</b></div>
+        <div class="kpi"><span class="pill">Milestone Terdekat</span> <span id="nearestLabel">–</span></div>
+        <div class="kpi">
+          <span class="pill">Countdown</span>
+          <span id="countdown" class="countdown" aria-live="polite">–</span>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <div class="row between items-center mb-8">
+      <div class="tiny">
+        Tanggal ditampilkan dalam <b>Masehi</b> & <b>Hijriah</b> (Hijriah perkiraan; dapat berbeda 1–2 hari tergantung rukyat dan wilayah).
+      </div>
+      <div class="copy">
+        <label class="sr-only" for="sharelink">Tautan berbagi</label>
+        <input class="share mono" id="sharelink" readonly title="Klik untuk salin tautan hasil" />
+        <button id="copy" type="button" class="btn ghost">Salin tautan</button>
+      </div>
+      <a id="icsAll" class="btn ghost" download>Unduh semua ICS (mode)</a>
+    </div>
+
+    <div class="table-scroller">
+      <table id="tbl" aria-describedby="tableHelp">
+        <colgroup>
+          <col class="col-milestone" />
+          <col class="col-incl" />
+          <col class="col-eksl" />
+          <col class="col-desc" />
+          <col class="col-act" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">Milestone</th>
+            <th scope="col">Inklusif<br><span class="tiny">Masehi + Hijriah</span></th>
+            <th scope="col">Eksklusif<br><span class="tiny">Masehi + Hijriah</span></th>
+            <th scope="col">Deskripsi</th>
+            <th scope="col">Pengingat</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div id="tableHelp" class="sr-only">
+      Tabel perbandingan tanggal inklusif dan eksklusif (Masehi & Hijriah) beserta deskripsi singkat setiap peringatan.
+    </div>
+  </section>
+
+  <footer role="contentinfo">
+    <p class="tiny">
+      • Perhitungan berbasis <span class="mono">hari</span> di UTC; hasil diformat sesuai zona yang dipilih. <br/>
+      • “2 tahun” didefinisikan sebagai <b>730 hari</b> agar konsisten dengan milestone berbasis hari. <br/>
+      • Deskripsi bersifat umum; praktik tiap daerah/keluarga dapat berbeda. Hormati ketentuan tokoh agama/adat setempat.
+    </p>
+  </footer>
+</main>
+
+<script>
+/* ========= Utilities waktu & format ========= */
+const $ = s => document.querySelector(s);
+const tzSel = $('#tz');
+const fmtID = tz => new Intl.DateTimeFormat('id-ID', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+const fmtISO = tz => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' });
+
+function makeHijriFormatter(tz){
+  try { return new Intl.DateTimeFormat('id-ID-u-ca-islamic', { timeZone: tz, day:'numeric', month:'long', year:'numeric' }); }
+  catch { return null; }
+}
+function fmtHijri(date, tz){
+  try{
+    const f = makeHijriFormatter(tz);
+    if(!f) return '— (Hijriah tidak didukung)';
+    return f.format(date);
+  }catch{ return '— (Hijriah tidak didukung)'; }
+}
+function addDaysUTC(iso, days){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m-1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt;
+}
+function dayN(iso, n, inclusive=true){ return addDaysUTC(iso, inclusive ? (n-1) : n); }
+function todayISOInTZ(tz){ return fmtISO(tz).format(new Date()); }
+function parseISOtoUTCDate(iso){ const [y,m,d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)); }
+function daysDiffUTC(aDate, bDate){ return Math.round((bDate.getTime() - aDate.getTime()) / 86400000); }
+
+/* ========= Data milestone & deskripsi ========= */
+const MILESTONES = [
+  {label:'3 hari', n:3,  key:'d3'},
+  {label:'7 hari', n:7,  key:'d7'},
+  {label:'40 hari', n:40, key:'d40'},
+  {label:'100 hari', n:100, key:'d100'},
+  {label:'365 hari (1 tahun)', n:365, key:'d365'},
+  {label:'730 hari (2 tahun)', n:730, key:'d730'},
+  {label:'1000 hari (Nyewu)', n:1000, key:'d1000'},
+];
+
+const DESKRIPSI = {
+  d3:   'Doa dan tahlil mendoakan almarhum; keluarga inti dan tetangga terdekat berkumpul.',
+  d7:   'Lanjutan doa. Sebagian daerah menyebut “mitung dina”; evaluasi kebutuhan keluarga yang ditinggal.',
+  d40:  'Penanda empat puluh hari; sering diadakan majelis doa lebih besar bersama kerabat.',
+  d100: 'Seratus hari; beberapa keluarga menutup rangkaian awal duka di momen ini.',
+  d365: 'Haul (1 tahun). Pengingat tahunan untuk mendoakan, mengenang teladan, dan silaturahmi keluarga.',
+  d730: 'Dua tahun (730 hari). Sebagian keluarga mengadakan doa ringkas—praktik bervariasi antar daerah.',
+  d1000:'Nyewu (1000 hari). Penutup rangkaian doa versi Jawa; umumnya syukuran sederhana dan tahlil.'
+};
+
+/* ========= ICS tunggal ========= */
+function makeICS(summary, dateInTZ, tz){
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', hour12:false
+  }).formatToParts(dateInTZ);
+  const get = k => parts.find(p => p.type===k)?.value;
+  const y=get('year'), m=get('month'), d=get('day');
+  const dtstart = `${y}${m}${d}T090000`;
+  const dtend   = `${y}${m}${d}T100000`;
+  const ics = [
+    'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Penghitung 1000 Hari//ID',
+    'BEGIN:VEVENT', `UID:${Date.now()}@1000hari`, `DTSTAMP:${y}${m}${d}T000000Z`,
+    `SUMMARY:${summary}`, `DTSTART;TZID=${tz}:${dtstart}`, `DTEND;TZID=${tz}:${dtend}`,
+    'END:VEVENT','END:VCALENDAR'
+  ].join('\\n');
+  return URL.createObjectURL(new Blob([ics], {type:'text/calendar'}));
+}
+
+/* ====== Add-to-Calendar (Google / Outlook.com / Yahoo) & ICS bundle ====== */
+const TZ_OFFSETS = { 'Asia/Jakarta':7, 'Asia/Makassar':8, 'Asia/Jayapura':9, 'UTC':0 };
+const pad = n => String(n).padStart(2,'0');
+
+function localYMD(date, tz){
+  const s = fmtISO(tz).format(date); // YYYY-MM-DD
+  const [y,m,d] = s.split('-').map(Number);
+  return {y, m, d};
+}
+function localStamp(date, tz, hh, mm){
+  const {y,m,d} = localYMD(date, tz);
+  return `${y}${pad(m)}${pad(d)}T${pad(hh)}${pad(mm)}00`;
+}
+function utcStampZ(date, tz, hh, mm){
+  const {y,m,d} = localYMD(date, tz);
+  const off = TZ_OFFSETS[tz] ?? 0;
+  const utc = new Date(Date.UTC(y, m-1, d, hh - off, mm, 0));
+  const Ys = utc.getUTCFullYear(), Ms = pad(utc.getUTCMonth()+1), Ds = pad(utc.getUTCDate());
+  const Hs = pad(utc.getUTCHours()), Ns = pad(utc.getUTCMinutes());
+  return `${Ys}${Ms}${Ds}T${Hs}${Ns}00Z`;
+}
+function googleUrl(summary, date, tz){
+  const start = localStamp(date, tz, 9, 0);
+  const end   = localStamp(date, tz, 10, 0);
+  const u = new URL('https://calendar.google.com/calendar/render');
+  u.searchParams.set('action','TEMPLATE');
+  u.searchParams.set('text', summary);
+  u.searchParams.set('dates', `${start}/${end}`);
+  u.searchParams.set('ctz', tz);
+  u.searchParams.set('details','Pengingat dari Penghitung 1000 Hari');
+  return u.toString();
+}
+function outlookWebUrl(summary, date, tz){
+  const toISOZ = z => `${z.slice(0,4)}-${z.slice(4,6)}-${z.slice(6,8)}T${z.slice(9,11)}:${z.slice(11,13)}:${z.slice(13,15)}Z`;
+  const startZ = toISOZ(utcStampZ(date, tz, 9, 0));
+  const endZ   = toISOZ(utcStampZ(date, tz, 10, 0));
+  const u = new URL('https://outlook.live.com/calendar/0/deeplink/compose');
+  u.searchParams.set('path','/calendar/action/compose');
+  u.searchParams.set('rru','addevent');
+  u.searchParams.set('subject', summary);
+  u.searchParams.set('startdt', startZ);
+  u.searchParams.set('enddt', endZ);
+  u.searchParams.set('allday','false');
+  u.searchParams.set('body','Pengingat dari Penghitung 1000 Hari');
+  return u.toString();
+}
+function yahooUrl(summary, date, tz){
+  const st = utcStampZ(date, tz, 9, 0);
+  const et = utcStampZ(date, tz, 10, 0);
+  const u = new URL('https://calendar.yahoo.com/');
+  u.searchParams.set('v','60'); u.searchParams.set('view','d'); u.searchParams.set('type','20');
+  u.searchParams.set('title', summary);
+  u.searchParams.set('st', st); u.searchParams.set('et', et);
+  u.searchParams.set('desc','Pengingat dari Penghitung 1000 Hari');
+  return u.toString();
+}
+function makeBundleICS(name, list, tz, modeLabel){
+  const out = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Penghitung 1000 Hari//ID'];
+  for(const m of list){
+    const [y,mn,d] = fmtISO(tz).format(m.date).split('-');
+    const dtstart = `${y}${mn}${d}T090000`;
+    const dtend   = `${y}${mn}${d}T100000`;
+    out.push('BEGIN:VEVENT',
+      `UID:${Date.now()}-${m.n}@1000hari`,
+      `DTSTAMP:${y}${mn}${d}T000000Z`,
+      `SUMMARY:${m.label} ${name} (${modeLabel})`,
+      `DTSTART;TZID=${tz}:${dtstart}`,
+      `DTEND;TZID=${tz}:${dtend}`,
+      'END:VEVENT');
+  }
+  out.push('END:VCALENDAR');
+  return URL.createObjectURL(new Blob([out.join('\\n')], {type:'text/calendar'}));
+}
+
+/* ========= Render ========= */
+function milestones(iso, inclusive){ return MILESTONES.map(x => ({...x, date: dayN(iso, x.n, inclusive)})); }
+function nearestFrom(list, tz){
+  const today = parseISOtoUTCDate(todayISOInTZ(tz));
+  let best = null;
+  for(const m of list){
+    const diff = daysDiffUTC(today, m.date);
+    if(diff >= 0 && (best===null || diff < best.diff)) best = { ...m, diff };
+  }
+  return best;
+}
+
+function makeDateCell(dateObj, tz, fmt){
+  const td = document.createElement('td');
+  td.className = 'cell-date';
+  const line1 = document.createElement('div');
+  line1.innerHTML = `<b>${fmt.format(dateObj)}</b>`;
+  const line2 = document.createElement('div');
+  line2.className = 'subtext';
+  line2.textContent = fmtHijri(dateObj, tz);
+  td.appendChild(line1); td.appendChild(line2);
+  return td;
+}
+function makeDescCell(text){
+  const td = document.createElement('td');
+  const details = document.createElement('details');
+  const sum = document.createElement('summary');
+  sum.className = 'sum';
+  sum.textContent = 'Lihat ringkas';
+  const p = document.createElement('p');
+  p.className = 'desc';
+  p.textContent = text;
+  details.appendChild(sum); details.appendChild(p);
+  td.appendChild(details);
+  return td;
+}
+
+function render(){
+  const name = $('#name').value.trim() || 'Almarhum';
+  const dod  = $('#dod').value;
+  const mode = $('#mode').value;
+  const tz   = tzSel.value;
+  if(!dod){ alert('Isi tanggal wafat.'); return; }
+
+  $('#result').hidden = false;
+  $('#modeLabel').textContent = (mode==='inkl'?'Inklusif':'Eksklusif');
+
+  const incl = milestones(dod, true);
+  const eksl = milestones(dod, false);
+  const main = (mode==='inkl') ? incl : eksl;
+
+  // tombol "Unduh semua ICS (mode)"
+  const modeLabel = (mode === 'inkl') ? 'inklusif' : 'eksklusif';
+  const allIcsUrl = makeBundleICS(name, main, tz, modeLabel);
+  const btnAll = document.getElementById('icsAll');
+  btnAll.href = allIcsUrl;
+  btnAll.download = `pengingat_${name}_${modeLabel}.ics`;
+  btnAll.textContent = `Unduh semua ICS (${modeLabel})`;
+
+  const near = nearestFrom(main, tz);
+  if(near){
+    $('#nearestLabel').textContent = `${near.label} – ${fmtID(tz).format(near.date)}`;
+    $('#countdown').textContent = near.diff === 0 ? 'Hari ini' : `${near.diff} hari lagi`;
+    $('#countdown').className = 'countdown ' + (near.diff === 0 ? 'ok' : (near.diff <= 7 ? 'warn' : ''));
+  }else{
+    $('#nearestLabel').textContent = 'Tidak ada (semua terlewati)';
+    $('#countdown').textContent = '—';
+    $('#countdown').className = 'countdown';
+  }
+
+  // Share link
+  const share = new URL(location.href);
+  share.searchParams.set('name', name);
+  share.searchParams.set('dod',  dod);
+  share.searchParams.set('mode', mode);
+  share.searchParams.set('tz',   tz);
+  $('#sharelink').value = share.toString();
+
+  // Tabel
+  const tbody = $('#tbl tbody'); tbody.innerHTML = '';
+  const fmt = fmtID(tz);
+  let rowIndex = 0;
+
+  for(const m of incl){
+    const tr = document.createElement('tr');
+    tr.className = 'reveal';
+
+    const th = document.createElement('th');
+    th.scope = 'row';
+    th.innerHTML = m.n === 1000 ? '<b>1000 hari (Nyewu)</b>' : m.label;
+    tr.appendChild(th);
+
+    // inklusif & eksklusif
+    tr.appendChild(makeDateCell(m.date, tz, fmt));
+    const eks = eksl.find(e => e.n === m.n).date;
+    tr.appendChild(makeDateCell(eks, tz, fmt));
+
+    // deskripsi
+    const descKey = MILESTONES.find(x => x.n === m.n).key;
+    tr.appendChild(makeDescCell(DESKRIPSI[descKey] || '-'));
+
+    // actions: menu Add to Calendar + ICS
+    const tdAct = document.createElement('td');
+    tdAct.className = 'actions';
+
+    // menu (details)
+    const menu = document.createElement('details');
+    menu.className = 'menu';
+
+    const sum = document.createElement('summary');
+    sum.className = 'btn ghost small';
+    sum.textContent = 'Tambah';
+    menu.appendChild(sum);
+
+    const list = document.createElement('div');
+    list.className = 'menu-list';
+
+    // helper item
+    const addItem = (label, href, downloadName) => {
+      const a = document.createElement('a');
+      a.textContent = label;
+      a.href = href;
+      if (downloadName) { a.download = downloadName; }
+      else { a.target = '_blank'; a.rel = 'noopener'; }
+      list.appendChild(a);
+    };
+
+    // kalender web
+    addItem('Google Kalender (Inklusif)',  googleUrl(`${m.label} ${name} (inklusif)`, m.date, tz));
+    addItem('Google Kalender (Eksklusif)', googleUrl(`${m.label} ${name} (eksklusif)`, eks, tz));
+    list.appendChild(document.createElement('hr'));
+    addItem('Outlook.com (Inklusif)',  outlookWebUrl(`${m.label} ${name} (inklusif)`, m.date, tz));
+    addItem('Outlook.com (Eksklusif)', outlookWebUrl(`${m.label} ${name} (eksklusif)`, eks, tz));
+    list.appendChild(document.createElement('hr'));
+    addItem('Yahoo Calendar (Inklusif)',  yahooUrl(`${m.label} ${name} (inklusif)`, m.date, tz));
+    addItem('Yahoo Calendar (Eksklusif)', yahooUrl(`${m.label} ${name} (eksklusif)`, eks, tz));
+    list.appendChild(document.createElement('hr'));
+
+    // file .ics
+    const icsIn = makeICS(`${m.label} ${name} (inklusif)`, m.date, tz);
+    const icsEx = makeICS(`${m.label} ${name} (eksklusif)`, eks, tz);
+    addItem('Apple/Outlook (.ics) – Inklusif',  icsIn, `${m.label.replace(/\s+/g,'_').replace(/[()]/g,'')}_${name}_inkl.ics`);
+    addItem('Apple/Outlook (.ics) – Eksklusif', icsEx, `${m.label.replace(/\s+/g,'_').replace(/[()]/g,'')}_${name}_eksl.ics`);
+
+    menu.appendChild(list);
+    tdAct.appendChild(menu);
+    tr.appendChild(tdAct);
+
+    // highlight milestone terdekat
+    if(near && near.n === m.n){ tr.classList.add('highlight'); }
+
+    tbody.appendChild(tr);
+    requestAnimationFrame(() => setTimeout(() => tr.classList.add('show'), 60 * rowIndex++));
+  }
+}
+
+/* ========= Events ========= */
+$('#calc').addEventListener('click', render);
+$('#print').addEventListener('click', () => window.print());
+$('#reset').addEventListener('click', () => {
+  $('#result').hidden = true;
+  $('#modeLabel').textContent = '–';
+  $('#nearestLabel').textContent = '–';
+  $('#countdown').textContent = '–';
+  $('#countdown').className = 'countdown';
+});
+$('#copy').addEventListener('click', () => {
+  const el = $('#sharelink'); el.select(); el.setSelectionRange(0, 99999);
+  document.execCommand('copy');
+  const btn = $('#copy'); btn.textContent='Tersalin!'; setTimeout(()=>btn.textContent='Salin tautan',1200);
+});
+
+// Auto-load dari query string
+(function initFromQuery(){
+  const q = new URLSearchParams(location.search);
+  if(q.get('name')) $('#name').value = q.get('name');
+  if(q.get('dod'))  $('#dod').value  = q.get('dod');
+  if(q.get('mode')) $('#mode').value = q.get('mode');
+  if(q.get('tz'))   tzSel.value      = q.get('tz');
+  if(q.get('dod')) render();
+})();
+</script>
+
+<!-- Inject -webkit-overflow-scrolling hanya untuk iOS lama, tanpa mengacau lint -->
+<script>
+(function(){
+  var ua = navigator.userAgent;
+  var oldIOS = /OS (?:9_|10_|11_|12_)/.test(ua) && /iPhone|iPad|iPod/.test(ua);
+  if (oldIOS) {
+    var s = document.createElement('style');
+    s.textContent = '.table-scroller{-webkit-overflow-scrolling:touch}';
+    document.head.appendChild(s);
+  }
+})();
+</script>
+</body>
+</html>
